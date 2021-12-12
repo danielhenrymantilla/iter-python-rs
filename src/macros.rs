@@ -1,15 +1,16 @@
+pub use ::join_lazy_fmt::lazy_format;
 
-
-/// Write the most pervasive iterator adapters
+/// (shortname: `i!`) — Write the most pervasive iterator adapters
 /// ([filter]ing and [map]ping) as [Python generator expressions].
 ///
 /// # Examples
 ///
 /// ### Squaring even numbers
 ///
-/// ```rust,edition2018
-/// # use ::iter_python::iter;
-/// let mut all_evens_squared = iter!(
+/// ```rust
+/// use ::iter_python::prelude::*;
+///
+/// let mut all_evens_squared = i!(
 ///     x * x
 ///     for x in (0 ..)
 ///     if x % 2 == 0
@@ -21,9 +22,10 @@
 ///
 /// ### `filter`ing is optional, such as in Python:
 ///
-/// ```rust,edition2018
-/// # use ::iter_python::iter;
-/// let mut numbers_binary = iter!(format!("{:02b}", x) for x in 1 ..= 3);
+/// ```rust
+/// use ::iter_python::prelude::*;
+///
+/// let mut numbers_binary = i!(format!("{:02b}", x) for x in 1 ..= 3);
 ///
 /// assert_eq!(numbers_binary.next(), Some("01".into()));
 /// assert_eq!(numbers_binary.next(), Some("10".into()));
@@ -33,13 +35,14 @@
 ///
 /// ### You may also `filter` with `if let`:
 ///
-/// ```rust,edition2018
-/// # use ::iter_python::iter;
+/// ```rust
+/// use ::iter_python::prelude::*;
+///
 /// let strings = ["42", "0", "zero", "27"];
 ///
-/// let parsed_as_i32s = iter!(s.parse::<i32>() for &s in &strings);
+/// let parsed_as_i32s = i!(s.parse::<i32>() for &s in &strings);
 ///
-/// let total: i32 = Iterator::sum(iter!(
+/// let total: i32 = Iterator::sum(i!(
 ///     x
 ///     for res in parsed_as_i32s
 ///     if let Ok(x) = res
@@ -48,8 +51,9 @@
 /// assert_eq!(total, 42 + 0 + 27);
 /// ```
 ///
-/// ```rust,edition2018
-/// # use ::iter_python::iter;
+/// ```rust
+/// use ::iter_python::prelude::*;
+///
 /// enum Fruit { Banana, Peach, RottenApple }
 /// use Fruit::*;
 ///
@@ -66,7 +70,7 @@
 ///
 /// static BASKET: &[Fruit] = &[Banana, RottenApple, Peach, Banana];
 ///
-/// let no_rotten_apple = iter!(
+/// let no_rotten_apple = i!(
 ///     fruit
 ///     for fruit in BASKET
 ///     if let Banana | Peach = fruit
@@ -75,6 +79,44 @@
 /// assert!({no_rotten_apple}.all(Fruit::is_fresh));
 /// ```
 ///
+/// ### You can also nest / combine iterators
+///
+/// ```rust
+/// use ::iter_python::prelude::*;
+///
+/// assert_eq!(
+///     i!((i, j) for i in 0 .. 3 for j in 0 .. 2).vec(),
+///     vec![
+///         (0, 0),
+///         (0, 1),
+///         (1, 0),
+///         (1, 1),
+///         (2, 0),
+///         (2, 1),
+///     ],
+/// );
+/// ```
+///
+/// #### With the same `if` guards as with the single case:
+///
+/// ```rust
+/// use ::iter_python::prelude::*;
+///
+/// assert_eq!(
+///     i!(
+///         (i, j)
+///         for i in 0 .. 4
+///         if i != 2
+///         for j in 0 .. i
+///         if j != 1
+///     ).vec(),
+///     vec![
+///         (1, 0),
+///         (3, 0),
+///         (3, 2),
+///     ]
+/// )
+/// ```
 /// [filter]: https://doc.rust-lang.org/core/iter/trait.Iterator.html#method.filter
 /// [map]: https://doc.rust-lang.org/core/iter/trait.Iterator.html#method.map
 /// [Python generator expressions]: https://www.python.org/dev/peps/pep-0289
@@ -82,114 +124,207 @@
 #[macro_export]
 macro_rules! iter {
     (
-        $mapped_expr:expr ,
-        for $var:pat in $iterable:expr ,
-        if $cond:expr $(,)?
-    ) => (
-        $iterable
-            .into_iter()
-            .filter_map(|$var| {
-                if $cond {
-                    Some($mapped_expr)
-                } else {
-                    None
-                }
-            })
-    );
+        $($input:tt)*
+    ) => ($crate::__munch_iter_args! {
+        munching[
+            $($input)*
+        ]
+        current_elem[]
+        to_endpoint[]
+    });
+} pub use iter;
 
+/// Split the input using `for` and `if`.
+#[doc(hidden)] /** Not part of the public API */ #[macro_export]
+macro_rules! __munch_iter_args {
+    // New `for` *nested* (no `if` in between)
     (
-        $mapped_expr:expr ,
-        for $var:pat in $iterable:expr ,
-        if let $( $pat:pat )|+ = $value:expr $(,)?
-    ) => (
-        $iterable
-            .into_iter()
-            .filter_map(|$var| {
-                if let $( $pat )|+ = $value {
-                    Some($mapped_expr)
-                } else {
-                    None
-                }
-            })
-    );
+        munching[
+            for $($rest:tt)*
+        ]
+        current_elem[
+            for $($acc_for:tt)*
+        ]
+        to_endpoint[
+            $($out:tt)*
+        ]
+    ) => ($crate::__munch_iter_args! {
+        munching[
+            $($rest)*
+        ]
+        current_elem[ for ]
+        to_endpoint[
+            $($out)*
+            [for $($acc_for)*]
+            [] // encountered `for` after `for` => no `if` guard
+        ]
+    });
 
+    // New `for`
     (
-        $mapped_expr:expr ,
-        for $var:pat in $iterable:expr $(,)?
-    ) => (
-        $iterable
-            .into_iter()
-            .map(|$var| $mapped_expr)
-    );
+        munching[
+            for $($rest:tt)*
+        ]
+        current_elem $current_elem:tt
+        to_endpoint[
+            $($out:tt)*
+        ]
+    ) => ($crate::__munch_iter_args! {
+        munching[
+            $($rest)*
+        ]
+        current_elem[ for ]
+        to_endpoint[
+            $($out)*
+            $current_elem
+        ]
+    });
 
-    (@parsing_mapped_expr
-        $mapped_expression:tt
-        for
-        $($rest:tt)*
-    ) => ($crate::iter!(@parsing_for
-        $mapped_expression
-        [ for ] // for_body
-        $($rest)*
-    ));
-
-    (@parsing_mapped_expr
-        [ $($mapped_expression_tts:tt)* ]
-        $current_tt:tt
-        $($rest:tt)*
-    ) => ($crate::iter!(@parsing_mapped_expr
-        [ $($mapped_expression_tts)* $current_tt ]
-        $($rest)*
-    ));
-
-    (@parsing_for
-        [ $($mapped_expression_tts:tt)* ]
-        [ $($for_body_tts:tt)* ]
-    ) => ($crate::iter!(
-        $($mapped_expression_tts)* ,
-        $($for_body_tts)*,
-    ));
-
-    (@parsing_for
-        [ $($mapped_expression_tts:tt)* ]
-        [ $($for_body_tts:tt)* ]
-        if
-        $($rest:tt)*
-    ) => ($crate::iter!(
-        $($mapped_expression_tts)* ,
-        $($for_body_tts)* ,
-        if $($rest)*
-    ));
-
-    (@parsing_for
-        $mapped_expression:tt
-        [ $($for_body_tts:tt)* ]
-        $current_tt:tt
-        $($rest:tt)*
-    ) => ($crate::iter!(@parsing_for
-        $mapped_expression
-        [ $($for_body_tts)* $current_tt ]
-        $($rest)*
-    ));
-
+    // New `if`
     (
-        $($tt:tt)*
-    ) => ($crate::iter!(@parsing_mapped_expr
-        [] // mapped_expression
-        $($tt)*
-    ));
+        munching[
+            if $($rest:tt)*
+        ]
+        current_elem $current_elem:tt
+        to_endpoint[
+            $($out:tt)*
+        ]
+    ) => ($crate::__munch_iter_args! {
+        munching[
+            $($rest)*
+        ]
+        current_elem[ if ]
+        to_endpoint[
+            $($out)*
+            $current_elem
+        ]
+    });
+
+    // Neither `for` nor `if`: just accumulate that `:tt`
+    (
+        munching[
+            $current_tt:tt $($rest:tt)*
+        ]
+        current_elem[
+            $($current_elem:tt)*
+        ]
+        to_endpoint $to_endpoint:tt
+    ) => ($crate::__munch_iter_args! {
+        munching[
+            $($rest)*
+        ]
+        current_elem[
+            $($current_elem)* $current_tt
+        ]
+        to_endpoint $to_endpoint
+    });
+
+    // END: nothing left to munch
+    (
+        munching[]
+        current_elem $current_elem:tt
+        to_endpoint[
+            $($out:tt)*
+        ]
+    ) => ($crate::__endpoint! {
+        $($out)*
+        $current_elem
+    })
 }
 
-/// [Python "list" comprehensions]: same as [`iter!`],
+#[doc(hidden)] /** Not part of the public API */ #[macro_export]
+macro_rules! __endpoint {
+    // Non-last `for`-&-`if`
+    (
+        $mapped_expr:tt
+        [for $var:pat in $iterable:expr]
+        [if $($filter:tt)*]
+        $($rest:tt)+
+    ) => (
+        $crate::__::core::iter::Iterator::flat_map(
+            $crate::__::core::iter::IntoIterator::into_iter(
+                $iterable
+            ),
+            move |$var| {
+                $crate::__::core::iter::Iterator::flatten(
+                    $crate::__::core::iter::IntoIterator::into_iter(
+                        if $($filter)* {
+                            $crate::__::core::option::Option::Some(
+                                $crate::__endpoint!(
+                                    $mapped_expr
+                                    $($rest)*
+                                )
+                            )
+                        } else {
+                            $crate::__::core::option::Option::None
+                        }
+                    )
+                )
+            },
+        )
+    );
+
+    // Non-last `for` (no `if`!)
+    (
+        $mapped_expr:tt
+        [for $var:pat in $iterable:expr]
+        [/* no filter */]
+        $($rest:tt)+
+    ) => (
+        $crate::__::core::iter::Iterator::flat_map(
+            $crate::__::core::iter::IntoIterator::into_iter(
+                $iterable
+            ),
+            move |$var| $crate::__endpoint!($mapped_expr $($rest)*),
+        )
+    );
+
+    // Last `for`-&-`if`
+    (
+        [$mapped_expr:expr]
+        [for $var:pat in $iterable:expr]
+        [if $($filter:tt)*]
+        /* no rest */
+    ) => (
+        $crate::__::core::iter::Iterator::filter_map(
+            $crate::__::core::iter::IntoIterator::into_iter(
+                $iterable
+            ),
+            move |$var| if $($filter)* {
+                $crate::__::core::option::Option::Some($mapped_expr)
+            } else {
+                $crate::__::core::option::Option::None
+            },
+        )
+    );
+
+    // Last `for` (no `if`!)
+    (
+        [$mapped_expr:expr]
+        [for $var:pat in $iterable:expr]
+        $([/* no filter */])?
+        /* no rest */
+    ) => (
+        $crate::__::core::iter::Iterator::map(
+            $crate::__::core::iter::IntoIterator::into_iter(
+                $iterable
+            ),
+            move |$var| $mapped_expr,
+        )
+    );
+}
+
+/// (shortname: `v!`) — [Python "list" comprehensions]: same as [`i!`],
 /// but [`collect`]ed into a [`Vec`] instead.
 ///
-/// # `vec_it!` or `vec!`?
+/// # `v!` or `vec!`?
 ///
-/// **[`vec_it!`] fallbacks to [`::std::vec!`] functionality**,
+/// **[`v!`] fallbacks to [`::std::vec!`] functionality**,
 /// thus allowing maximum compatiblity!
 ///
 /// ### Example
-/// ```rust,edition2018
-/// use ::iter_python::vec_it as vec;
+/// ```rust
+/// use ::iter_python::macros::vec;
 ///
 /// let v1 = vec![i for i in 1 ..= 4];
 /// let v2 = vec![1, 2, 3, 4];
@@ -198,92 +333,47 @@ macro_rules! iter {
 ///
 /// It has not been named `vec` to prevent lints against ambiguous blob imports.
 ///
-/// [`iter!`]: `iter`
+/// [`i!`]: `iter`
 /// [`collect`]: https://doc.rust-lang.org/core/iter/trait.Iterator.html#method.collect
 /// [`Vec`]: https://doc.rust-lang.org/std/vec/struct.Vec.html
 /// [Python "list" comprehensions]: https://www.python.org/dev/peps/pep-0202
-/// [`vec_it!`]: `vec_it`
+/// [`v!`]: `vec`
 /// [`::std::vec!`]: https://doc.rust-lang.org/std/macro.vec.html
+#[cfg(feature = "std")]
+#[cfg_attr(feature = "better-docs",
+    doc(cfg(feature = "std")),
+)]
 #[macro_export]
-macro_rules! vec_it {
+macro_rules! v {
+    // std syntax compat.
     (
-        $expr:expr ,
-        for $var:pat in $iterable:expr
-        $(
-            ,
-            $($if_cond:tt)*
-        )?
+        $($e:expr),* $(,)?
     ) => (
-        $crate::iter!(
-            $expr,
-            for $var in $iterable
-            $(
-                ,
-                $($if_cond)*
-            )?
-        ).collect::<::std::vec::Vec<_>>()
+        $crate::__::std::vec! { $($e),* }
     );
 
-    (@parsing_mapped_expr
-        $fallback_to_vec:tt
+    // std syntax compat.
+    (
+        $e:expr ; $count:expr
     ) => (
-        ::std::vec! $fallback_to_vec
+        $crate::__::std::vec! { $e; $count }
     );
 
-
-    (@parsing_mapped_expr
-        $mapped_expression:tt
-        for
-        $($rest:tt)*
-    ) => ($crate::vec_it!(@parsing_for
-        $mapped_expression
-        [ for ] // for_body
-        $($rest)*
-    ));
-
-    (@parsing_mapped_expr
-        [ $($mapped_expression_tts:tt)* ]
-        $current_tt:tt
-        $($rest:tt)*
-    ) => ($crate::vec_it!(@parsing_mapped_expr
-        [ $($mapped_expression_tts)* $current_tt ]
-        $($rest)*
-    ));
-
-    (@parsing_for
-        [ $($mapped_expression_tts:tt)* ]
-        [ $($for_body_tts:tt)* ]
-    ) => ($crate::vec_it!(
-        $($mapped_expression_tts)* ,
-        $($for_body_tts)* ,
-    ));
-
-    (@parsing_for
-        [ $($mapped_expression_tts:tt)* ]
-        [ $($for_body_tts:tt)* ]
-        if
-        $($rest:tt)*
-    ) => ($crate::vec_it!(
-        $($mapped_expression_tts)* ,
-        $($for_body_tts)*,
-        if $($rest)*
-    ));
-
-    (@parsing_for
-        $mapped_expression:tt
-        [ $($for_body_tts:tt)* ]
-        $current_tt:tt
-        $($rest:tt)*
-    ) => ($crate::vec_it!(@parsing_for
-        $mapped_expression
-        [ $($for_body_tts)* $current_tt ]
-        $($rest)*
-    ));
-
     (
-        $($tt:tt)*
-    ) => ($crate::vec_it!(@parsing_mapped_expr
-        [] // mapped_expression
-        $($tt)*
-    ));
+        $($otherwise:tt)*
+    ) => (
+        <
+            $crate::__::std::vec::Vec<_>
+            as
+            $crate::__::core::iter::FromIterator<_>
+        >::from_iter(
+            $crate::macros::iter!( $($otherwise)* )
+        )
+    );
 }
+
+#[cfg(feature = "std")]
+#[cfg_attr(feature = "better-docs",
+    doc(cfg(feature = "std")),
+)]
+pub use crate::v as vec;
