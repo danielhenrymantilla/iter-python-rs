@@ -1,28 +1,46 @@
-#![cfg_attr(feature = "nightly",
-    feature(external_doc)
+#![cfg_attr(feature = "better-docs",
+    cfg_attr(all(), doc = include_str!("../README.md")),
+    feature(doc_cfg),
 )]
-#![cfg_attr(feature = "nightly",
-    doc(include = "../README.md")
-)]
-#![cfg_attr(not(feature = "nightly"),
+#![cfg_attr(not(feature = "better-docs"),
     doc = "See [crates.io](https://crates.io/crates/iter-python)"
 )]
-#![cfg_attr(not(feature = "nightly"),
+#![cfg_attr(not(feature = "better-docs"),
     doc = "for more info about this crate."
 )]
 
-#[doc(no_inline)]
-pub use ::join_lazy_fmt::Join;
+#![cfg_attr(not(doc),
+    no_std,
+)]
 
-#[doc(inline)]
-pub use ::join_lazy_fmt::lazy_format as f;
+pub mod prelude {
+    #[doc(no_inline)]
+    pub use crate::{
+        all, any,
+        macros::{
+            lazy_format as f,
+            iter as i,
+        },
+        extension_traits::{
+            Join as _,
+        },
+    };
 
-/// Reexport a trait that [**should be in the prelude**](
-/// https://internals.rust-lang.org/t/pre-rfc-add-fromiterator-to-the-prelude/4324)
-#[doc(hidden)]
+    #[doc(no_inline)]
+    #[cfg(feature = "std")]
+    #[cfg_attr(feature = "better-docs",
+        doc(cfg(feature = "std")),
+    )]
+    pub use crate::{
+        extension_traits::IteratorExt as _,
+        macros::vec as v,
+    };
+}
+
 pub
-use core::iter::FromIterator;
+mod extension_traits;
 
+pub
 mod macros;
 
 /// Python's `all(iterable)` function.
@@ -51,7 +69,7 @@ fn all (
 {
     iterable
         .into_iter()
-        .all(core::convert::identity)
+        .all(::core::convert::identity)
 }
 
 /// Python's `any(iterable)` function.
@@ -76,5 +94,13 @@ fn any (
 {
     iterable
         .into_iter()
-        .any(core::convert::identity)
+        .any(::core::convert::identity)
+}
+
+#[doc(hidden)] /** Not part of the public API */ pub
+mod __ {
+    pub use core;
+
+    #[cfg(feature = "std")] pub
+    extern crate std;
 }
