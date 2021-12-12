@@ -1,6 +1,6 @@
 [package]
 name = "iter-python"
-version = "0.10.0-rc1"
+version = "0.10.1"
 authors = ["Daniel Henry-Mantilla (daniel.henry.mantilla@gmail.com)", ]
 edition = "2018"
 
@@ -9,7 +9,7 @@ homepage = "https://github.com/danielhenrymantilla/iter-python-rs"
 repository = "https://github.com/danielhenrymantilla/iter-python-rs"
 
 description = "Python generator expressions and 'list' comprehensions"
-keywords = ["python", "iterator", "human", "generator", "comprehension"]
+keywords = ["python", "iterator", "list", "generator", "comprehension"]
 categories = ["rust-patterns", ]
 readme = "README.md"
 license = "MIT"

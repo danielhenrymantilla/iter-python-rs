@@ -132,7 +132,9 @@ macro_rules! iter {
         current_elem[]
         to_endpoint[]
     });
-} pub use iter;
+}
+#[doc(inline)]
+pub use iter;
 
 /// Split the input using `for` and `if`.
 #[doc(hidden)] /** Not part of the public API */ #[macro_export]
@@ -376,4 +378,5 @@ macro_rules! v {
 #[cfg_attr(feature = "better-docs",
     doc(cfg(feature = "std")),
 )]
+#[doc(inline)]
 pub use crate::v as vec;
